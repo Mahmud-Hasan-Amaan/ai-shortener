@@ -6,7 +6,7 @@ import { ClickAnalytics } from "./ClickAnalytics";
 import { DeviceAnalytics } from "./DeviceAnalytics";
 import { LocationAnalytics } from "./LocationAnalytics";
 
-type TimeLevel = "year" | "months" | "days" | "hours" | "minutes";
+type TimeLevel = "year" | "months" | "weeks" | "days" | "hours" | "minutes";
 type Breadcrumb = { level: TimeLevel; date: Date };
 
 export function AnalyticsChart({ userId }: { userId: string }) {
@@ -94,72 +94,154 @@ export function AnalyticsChart({ userId }: { userId: string }) {
         });
         break;
 
-      case "days":
+      case "weeks":
         // Show Weeks 1-4
+        console.log(
+          "Selected Month/Year:",
+          selectedDate.getMonth() + 1,
+          selectedDate.getFullYear()
+        );
+
         for (let week = 1; week <= 4; week++) {
+          const weekData = rawData.filter((d) => {
+            const date = new Date(d.timestamp);
+
+            // Only process dates in the selected month and year
+            if (
+              date.getMonth() !== selectedDate.getMonth() ||
+              date.getFullYear() !== selectedDate.getFullYear()
+            ) {
+              return false;
+            }
+
+            // Calculate the week number based on the day of the week
+            const firstDayOfMonth = new Date(
+              date.getFullYear(),
+              date.getMonth(),
+              1
+            );
+            const dayOffset = firstDayOfMonth.getDay(); // 0 for Sunday, 1 for Monday, etc.
+            const adjustedDate = date.getDate() + dayOffset - 1;
+            const weekOfMonth = Math.floor(adjustedDate / 7) + 1;
+
+            const matches = weekOfMonth === week;
+
+            if (matches) {
+              console.log(`Week ${week} data:`, {
+                date: date.toISOString(),
+                dayOfMonth: date.getDate(),
+                dayOfWeek: date.getDay(),
+                weekOfMonth,
+                clicks: d.clicks,
+              });
+            }
+
+            return matches;
+          });
+
+          const weekClicks = weekData.reduce(
+            (sum, d) => sum + (d.clicks || 0),
+            0
+          );
+          console.log(`Total clicks for Week ${week}:`, weekClicks);
+
           points.push({
             date: `Week ${week}`,
+            clicks: weekClicks || 0,
+            label: `Week ${week}`,
+          });
+        }
+
+        console.log("Final points data:", points);
+        break;
+
+      case "days":
+        // Show days of the week
+        const weekStart = new Date(selectedDate);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
+
+        for (let i = 0; i < 7; i++) {
+          const currentDate = new Date(weekStart);
+          currentDate.setDate(weekStart.getDate() + i);
+
+          points.push({
+            date: currentDate.toLocaleDateString("en-US", { weekday: "long" }),
             clicks: rawData
               .filter((d) => {
                 const date = new Date(d.timestamp);
-                const weekOfMonth = Math.ceil(date.getDate() / 7);
-                return (
-                  weekOfMonth === week &&
-                  date.getMonth() === selectedDate.getMonth() &&
-                  date.getFullYear() === selectedDate.getFullYear()
-                );
+                return date.toDateString() === currentDate.toDateString();
               })
               .reduce((sum, d) => sum + d.clicks, 0),
-            label: `Week ${week}`,
+            label: currentDate.toLocaleDateString("en-US", {
+              weekday: "short",
+            }),
           });
         }
         break;
 
       case "hours":
-        // Show hours (12-hour format)
+        console.log("Raw Data:", rawData);
+        console.log("Selected Date:", selectedDate);
+
         for (let hour = 0; hour < 24; hour++) {
           const period = hour >= 12 ? "PM" : "AM";
           const hour12 = hour % 12 || 12;
           const timeLabel = `${hour12} ${period}`;
 
+          const hourlyClicks = rawData
+            .filter((d) => {
+              const date = new Date(d.timestamp);
+              const dataDate = date.toDateString();
+              const selectedDateStr = selectedDate.toDateString();
+
+              // Log matching data points
+              if (dataDate === selectedDateStr && date.getHours() === hour) {
+                console.log(`Found data for ${hour}:00 -`, d);
+              }
+
+              return dataDate === selectedDateStr && date.getHours() === hour;
+            })
+            .reduce((sum, d) => sum + (d.clicks || 1), 0);
+
           points.push({
             date: timeLabel,
-            clicks: rawData
-              .filter((d) => {
-                const date = new Date(d.timestamp);
-                return (
-                  date.getHours() === hour &&
-                  date.toDateString() === selectedDate.toDateString()
-                );
-              })
-              .reduce((sum, d) => sum + d.clicks, 0),
+            clicks: hourlyClicks || 0, // Use 0 to show no data
             label: timeLabel,
           });
         }
         break;
 
       case "minutes":
-        // Show 5-minute intervals for the selected hour (1:00 PM, 1:05 PM, etc.)
-        const hour = selectedDate.getHours();
-        const hour12 = hour % 12 || 12;
-        const period = hour >= 12 ? "PM" : "AM";
+        const selectedHour = selectedDate.getHours();
+        const hour12 = selectedHour % 12 || 12;
+        const period = selectedHour >= 12 ? "PM" : "AM";
 
+        // Show 5-minute intervals (0, 5, 10, ..., 55)
         for (let minute = 0; minute < 60; minute += 5) {
           const timeLabel = `${hour12}:${minute
             .toString()
             .padStart(2, "0")} ${period}`;
+
+          const minuteClicks = rawData
+            .filter((d) => {
+              const date = new Date(d.timestamp);
+              const sameDate =
+                date.toDateString() === selectedDate.toDateString();
+              const sameHour = date.getHours() === selectedHour;
+              const minuteRange =
+                Math.floor(date.getMinutes() / 5) * 5 === minute;
+
+              if (sameDate && sameHour && minuteRange) {
+                console.log(`Found data for ${timeLabel} -`, d);
+              }
+
+              return sameDate && sameHour && minuteRange;
+            })
+            .reduce((sum, d) => sum + (d.clicks || 1), 0);
+
           points.push({
             date: timeLabel,
-            clicks: rawData
-              .filter((d) => {
-                const date = new Date(d.timestamp);
-                return (
-                  date.getHours() === hour &&
-                  Math.floor(date.getMinutes() / 5) * 5 === minute &&
-                  date.toDateString() === selectedDate.toDateString()
-                );
-              })
-              .reduce((sum, d) => sum + d.clicks, 0),
+            clicks: minuteClicks || 0, // Use 0 to show no data
             label: timeLabel,
           });
         }
@@ -183,14 +265,14 @@ export function AnalyticsChart({ userId }: { userId: string }) {
         setSelectedDate(new Date(parseInt(clickedValue.date), 0, 1));
         break;
       case "months":
-        setTimeLevel("days");
+        setTimeLevel("weeks");
         const monthIndex = new Date(
           Date.parse(clickedValue.date + " 1, 2000")
         ).getMonth();
         setSelectedDate(new Date(selectedDate.getFullYear(), monthIndex, 1));
         break;
-      case "days":
-        setTimeLevel("hours");
+      case "weeks":
+        setTimeLevel("days");
         const weekNum = parseInt(clickedValue.date.split(" ")[1]);
         setSelectedDate(
           new Date(
@@ -200,15 +282,40 @@ export function AnalyticsChart({ userId }: { userId: string }) {
           )
         );
         break;
+      case "days":
+        setTimeLevel("hours");
+        const clickedDate = new Date(selectedDate);
+        const startOfWeek = new Date(clickedDate);
+        startOfWeek.setDate(clickedDate.getDate() - clickedDate.getDay()); // Get to Sunday
+
+        const dayIndex = [
+          "Sunday",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+        ].indexOf(clickedValue.date);
+
+        const targetDate = new Date(startOfWeek);
+        targetDate.setDate(startOfWeek.getDate() + dayIndex);
+        targetDate.setHours(0, 0, 0, 0);
+
+        console.log("Setting date to:", targetDate.toISOString());
+        setSelectedDate(targetDate);
+        break;
       case "hours":
         setTimeLevel("minutes");
-        const [hour, period] = clickedValue.date.split(" ");
-        let hour24 = parseInt(hour);
-        if (period === "PM" && hour24 !== 12) hour24 += 12;
-        if (period === "AM" && hour24 === 12) hour24 = 0;
-        const newDate = new Date(selectedDate);
-        newDate.setHours(hour24);
-        setSelectedDate(newDate);
+        const [hourStr, periodStr] = clickedValue.date.split(" ");
+        let hour24 = parseInt(hourStr);
+        if (periodStr === "PM" && hour24 !== 12) hour24 += 12;
+        if (periodStr === "AM" && hour24 === 12) hour24 = 0;
+
+        const newDateWithHour = new Date(selectedDate);
+        newDateWithHour.setHours(hour24, 0, 0, 0); // Set to start of hour
+        console.log("Setting hour to:", newDateWithHour.toISOString());
+        setSelectedDate(newDateWithHour);
         break;
     }
   };
