@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import dbConnect from "@/lib/mongodb";
 import Link from "@/models/Link";
 import { extractMetadata } from "@/lib/metadata";
@@ -12,6 +13,12 @@ import type {
   LinkMetadata as LinkMetadataType,
 } from "@/types/link";
 import { getOrCreateUser } from "@/lib/utils/getOrCreateUser";
+import { OpenAI } from "openai";
+import QRCode from "qrcode";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export type AIContent = AIContentType;
 export type LinkMetadata = LinkMetadataType;
@@ -25,179 +32,128 @@ interface LinkDocument {
   __v: number;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
-    const user = await getOrCreateUser();
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { url } = await req.json();
+    const { isValid, error } = validateUrl(url);
 
-    // Validate URL
-    const validation = validateUrl(url);
-    if (!validation.isValid) {
-      return NextResponse.json(
-        { success: false, message: validation.error },
-        { status: 400 }
-      );
+    if (!isValid) {
+      return NextResponse.json({ error }, { status: 400 });
     }
 
-    // Add safety check with metadata
-    try {
-      const metadata = await extractMetadata(url);
-      const safetyResult = await analyzeSafety(url, metadata);
+    // Fetch original metadata from URL
+    const response = await fetch(url);
+    const html = await response.text();
+    const originalMetadata = extractMetadata(html); // You'll need to implement this
 
-      if (!safetyResult.safe) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: safetyResult.reason,
-            details: {
-              category: safetyResult.category,
-              confidence: safetyResult.confidence,
-              reason: safetyResult.reason,
-            },
-          },
-          { status: 400 }
-        );
-      }
+    // Generate AI-enhanced metadata
+    const aiMetadata = await generateAIMetadata(url, originalMetadata);
 
-      // Continue with the rest of the URL processing...
-    } catch (error) {
-      console.error("Safety check failed:", error);
-      return NextResponse.json(
-        { success: false, message: "Failed to verify URL safety" },
-        { status: 500 }
-      );
-    }
+    // Generate short code
+    const shortCode = await generateUniqueShortCode(aiMetadata.shortTitle);
 
-    // Check if the URL is already shortened by this specific user
-    const existingUserUrl = (await Link.findOne({
+    // Generate QR code
+    const shortUrl = `${process.env.NEXT_PUBLIC_HOST}/${shortCode}`;
+    const qrCode = await QRCode.toDataURL(shortUrl);
+
+    // Save to database
+    await dbConnect();
+    const link = new Link({
+      userId,
       originalUrl: url,
-      userId: user.clerkId,
-    })
-      .select("+qrCode")
-      .lean()) as LinkDocument;
+      shortCode,
+      metadata: {
+        ...originalMetadata,
+        ...aiMetadata,
+        aiGenerated: true,
+      },
+    });
+    await link.save();
 
-    if (existingUserUrl) {
-      return NextResponse.json({
-        success: true,
-        shortUrl: `${process.env.NEXT_PUBLIC_HOST}/${existingUserUrl.shortCode}`,
-        originalUrl: existingUserUrl.originalUrl,
-        link: existingUserUrl,
-        qrCode: existingUserUrl.qrCode,
-        metadata: existingUserUrl.metadata,
-        message: "URL information retrieved from database",
-      });
-    }
-
-    // Generate metadata and AI content
-    let metadata, aiContent;
-    try {
-      metadata = await extractMetadata(url);
-      const aiInput = {
-        url,
-        metadata: {
-          title: metadata.title || "",
-          description: metadata.description || "",
-        },
-      };
-
-      // Generate AI content
-      aiContent = await generateAIContent(aiInput);
-
-      // If the generated alias already exists, keep generating until we get a unique one
-      let isUnique = false;
-      let attempts = 0;
-      const maxAttempts = 5;
-
-      while (!isUnique && attempts < maxAttempts) {
-        const existingAlias = await Link.findOne({
-          shortCode: aiContent?.alias,
-        });
-
-        if (!existingAlias) {
-          isUnique = true;
-        } else {
-          // Generate a new alias with a suffix
-          const newAiContent = await generateAIContent({
-            ...aiInput,
-            attempt: attempts + 1, // Pass attempt number to AI for variation
-          });
-          aiContent = newAiContent;
-        }
-        attempts++;
-      }
-
-      // If we still don't have a unique alias, generate a random suffix
-      if (!isUnique) {
-        const randomSuffix = Math.random().toString(36).substring(2, 6);
-        if (aiContent) {
-          aiContent.alias = `${aiContent.alias}-${randomSuffix}`;
-        }
-      }
-
-      // Rest of your existing code for QR generation and saving...
-      const logoBuffer = await getFaviconBuffer(url);
-      if (!aiContent) throw new Error("Failed to generate content");
-      const shortUrl = `${process.env.NEXT_PUBLIC_HOST}/${aiContent.alias}`;
-      const qrCodeDataUrl = await generateQRCode(shortUrl, logoBuffer);
-
-      // Save to database with the unique alias
-      const link = await Link.create({
-        userId: user.clerkId,
-        originalUrl: url,
-        shortCode: aiContent.alias,
-        isActive: true,
-        qrCode: qrCodeDataUrl,
-        metadata: {
-          title: metadata?.title || "Untitled",
-          shortTitle:
-            aiContent?.shortTitle ||
-            metadata?.title?.substring(0, 50) ||
-            "Untitled",
-          description:
-            metadata?.description ||
-            aiContent?.enhancedDescription ||
-            "No description",
-          image: metadata?.image || null,
-          keywords: metadata?.keywords || aiContent?.suggestedKeywords || [],
-        },
-      });
-
-      const savedLink = (await Link.findById(link._id)
-        .select("+qrCode")
-        .lean()
-        .exec()) as LinkDocument;
-
-      if (!savedLink) {
-        throw new Error("Failed to save link");
-      }
-
-      return NextResponse.json({
-        success: true,
-        shortUrl,
-        originalUrl: url,
-        qrCode: qrCodeDataUrl,
-        metadata: savedLink.metadata,
-        link: { ...savedLink, qrCode: qrCodeDataUrl },
-      });
-    } catch (error) {
-      console.error("Error in generate route:", error);
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to generate short URL",
-        },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      shortUrl,
+      originalUrl: url,
+      metadata: link.metadata,
+      qrCode,
+    });
   } catch (error) {
-    console.error("Error creating short URL:", error);
+    console.error("Generate error:", error);
     return NextResponse.json(
-      { error: "Failed to create short URL" },
+      { error: "Failed to generate short URL" },
       { status: 500 }
     );
   }
+}
+
+async function generateAIMetadata(url: string, originalMetadata: any) {
+  const prompt = `Analyze this URL and its original metadata to generate enhanced, SEO-friendly metadata:
+URL: ${url}
+Original Title: ${originalMetadata.title || ""}
+Original Description: ${originalMetadata.description || ""}
+
+Please provide:
+1. A concise, catchy short title (max 50 chars)
+2. An engaging, SEO-optimized description (max 160 chars)
+3. Relevant keywords (max 5)
+4. A category for this content
+5. The target audience
+6. Content safety rating (G, PG, PG-13, etc.)
+
+Format the response as JSON.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      {
+        role: "system",
+        content: "You are an AI expert in SEO and content analysis.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const aiResponse = JSON.parse(completion.choices[0].message.content);
+
+  return {
+    shortTitle: aiResponse.shortTitle,
+    description: aiResponse.description,
+    keywords: aiResponse.keywords,
+    category: aiResponse.category,
+    targetAudience: aiResponse.targetAudience,
+    safetyRating: aiResponse.safetyRating,
+    aiAnalysis: {
+      tone: aiResponse.tone,
+      contentType: aiResponse.contentType,
+      recommendations: aiResponse.recommendations,
+    },
+  };
+}
+
+async function generateUniqueShortCode(shortTitle: string) {
+  // Convert short title to URL-friendly string
+  let baseCode = shortTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 30);
+
+  // Check if it exists and append random string if needed
+  let shortCode = baseCode;
+  let counter = 0;
+  while (await Link.exists({ shortCode })) {
+    counter++;
+    shortCode = `${baseCode}-${counter}`;
+  }
+
+  return shortCode;
 }
