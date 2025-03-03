@@ -1,38 +1,40 @@
 "use client";
 import { QrCode } from "lucide-react";
-import { motion } from "framer-motion";
+import Image from "next/image";
 
 interface QRCodeDisplayProps {
   qrCode: string;
 }
 
 export function QRCodeDisplay({ qrCode }: QRCodeDisplayProps) {
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = qrCode;
+    link.download = "qrcode.png";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-purple-400 font-medium flex items-center gap-2">
-        <QrCode className="w-4 h-4" />
-        QR Code
-      </p>
-      <div className="p-4 bg-white rounded-2xl shadow-lg">
-        <img
+    <div className="flex flex-col items-center gap-4 mt-8">
+      <h3 className="text-xl font-semibold">QR Code</h3>
+      <div className="bg-white p-4 rounded-lg">
+        <Image
           src={qrCode}
           alt="QR Code"
-          className="w-[200px] h-[200px]"
+          width={200}
+          height={200}
+          className="rounded-lg"
         />
       </div>
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={() => {
-          const downloadLink = document.createElement("a");
-          downloadLink.href = qrCode;
-          downloadLink.download = "qrcode.png";
-          downloadLink.click();
-        }}
-        className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-white hover:from-purple-500/30 hover:to-cyan-500/30 transition-colors"
+      <button
+        onClick={handleDownload}
+        className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
       >
+        <QrCode className="w-5 h-5" />
         Download QR Code
-      </motion.button>
+      </button>
     </div>
   );
 }

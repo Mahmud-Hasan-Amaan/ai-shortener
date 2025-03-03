@@ -3,8 +3,8 @@ import dbConnect from "@/lib/mongodb";
 import Link from "@/models/Link";
 import { auth } from "@clerk/nextjs/server";
 import { UAParser } from "ua-parser-js";
-import { NextRequest } from "next/server";
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 
 // Static routes that should never be treated as short URLs
 const STATIC_ROUTES = [
@@ -57,16 +57,14 @@ export default async function Page({
 }) {
   try {
     const resolvedParams = await params;
-
-    // Skip processing for static routes
     if (isStaticRoute(resolvedParams.shorturl)) {
       return null;
     }
 
     await dbConnect();
     const { userId } = await auth();
+    const headersList = await headers();
 
-    // Find the URL without waiting for the update
     const shortUrlData = await Link.findOne({
       shortCode: resolvedParams.shorturl,
     });
@@ -75,42 +73,61 @@ export default async function Page({
       return <RedirectAnimation url="/" />;
     }
 
-    // Validate URL
-    let redirectUrl;
+    // Get IP and country
+    const ip =
+      headersList.get("x-forwarded-for")?.split(",")[0] ||
+      headersList.get("x-real-ip") ||
+      "Unknown";
+
+    let country = "Unknown";
     try {
-      const url = new URL(shortUrlData.originalUrl);
-      redirectUrl = url.toString();
-    } catch (e) {
-      console.error("Invalid URL:", e);
-      return <RedirectAnimation url="/" />;
+      // Skip geolocation for localhost/internal IPs
+      if (
+        ip === "::1" ||
+        ip === "127.0.0.1" ||
+        ip.startsWith("192.168.") ||
+        ip.startsWith("10.")
+      ) {
+        country = "Local Development";
+      } else {
+        const geoResponse = await fetch(`http://ip-api.com/json/${ip}`);
+        const geoData = await geoResponse.json();
+        if (geoData.status === "success") {
+          country = geoData.country;
+          console.log("Detected country:", country, "IP:", ip);
+        }
+      }
+    } catch (error) {
+      console.error("Geolocation error:", error);
     }
 
-    // Update stats without waiting
+    // Update stats
     if (shortUrlData._id) {
-      const userAgent = (await headers()).get("user-agent") || "";
+      const userAgent = headersList.get("user-agent") || "";
       const parser = new UAParser(userAgent);
       const result = parser.getResult();
 
-      const deviceInfo = {
+      const clickInfo = {
+        timestamp: new Date(),
+        visitorId: ip,
         device: result.device.type || "desktop",
         browser: result.browser.name,
         os: result.os.name,
-        timestamp: new Date(),
+        country: country,
       };
 
       Link.findByIdAndUpdate(
         shortUrlData._id,
         {
           $inc: { clickCount: 1 },
-          $push: { clicks: deviceInfo },
+          $push: { clicks: clickInfo },
           ...(userId && { $addToSet: { visitors: userId } }),
         },
         { new: true }
       ).catch(console.error);
     }
 
-    // Redirect immediately
-    return <RedirectAnimation url={redirectUrl} />;
+    return <RedirectAnimation url={shortUrlData.originalUrl} />;
   } catch (error) {
     console.error("Error:", error);
     return <RedirectAnimation url="/" />;
@@ -118,41 +135,65 @@ export default async function Page({
 }
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { shorturl: string } }
+  request: Request,
+  { params }: { params: { shortCode: string } }
 ) {
   try {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0] ||
+      request.headers.get("x-real-ip") ||
+      "Unknown";
+
+    // Get country using IP geolocation
+    let country = "Unknown";
+    try {
+      const geoResponse = await fetch(`http://ip-api.com/json/${ip}`);
+      const geoData = await geoResponse.json();
+      if (geoData.status === "success") {
+        country = geoData.country;
+        console.log("Detected country:", country); // Debug log
+      }
+    } catch (error) {
+      console.error("Geolocation error:", error);
+    }
+
+    const userAgent = request.headers.get("user-agent") || "Unknown";
+    const device = userAgent.toLowerCase().includes("mobile")
+      ? "mobile"
+      : "desktop";
+
     await dbConnect();
-    const shortUrl = params.shorturl;
 
-    const userAgent = request.headers.get("user-agent") || "";
-    const parser = new UAParser(userAgent);
-    const result = parser.getResult();
-
-    const deviceInfo = {
-      device: result.device.type || "desktop",
-      browser: result.browser.name,
-      os: result.os.name,
-      timestamp: new Date(),
-    };
-
-    // Find and update the link document
     const link = await Link.findOneAndUpdate(
-      { shortUrl },
+      { shortCode: params.shortCode },
       {
+        $push: {
+          clicks: {
+            timestamp: new Date(),
+            visitorId: ip,
+            device,
+            country,
+          },
+        },
         $inc: { clickCount: 1 },
-        $push: { clicks: deviceInfo },
       },
       { new: true }
     );
 
     if (!link) {
-      return new Response("Link not found", { status: 404 });
+      return NextResponse.json({ error: "Link not found" }, { status: 404 });
     }
 
-    return Response.redirect(link.originalUrl);
+    return NextResponse.redirect(link.originalUrl);
   } catch (error) {
-    console.error("Error processing redirect:", error);
-    return new Response("Internal Server Error", { status: 500 });
+    console.error("Click processing error:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
+}
+
+export function parseUserAgent(userAgent: string): string {
+  const ua = userAgent.toLowerCase();
+  if (ua.includes("mobile")) return "Mobile";
+  if (ua.includes("tablet")) return "Tablet";
+  return "Desktop";
 }

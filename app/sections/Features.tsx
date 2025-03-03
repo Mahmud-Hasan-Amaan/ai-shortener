@@ -5,8 +5,15 @@ import Image from "next/image";
 import { Element } from "react-scroll";
 import { details, features } from "../constants";
 import Button from "@/components/ui/CustomButton";
+import { useRouter } from "next/navigation";
 
 const Features = () => {
+  const router = useRouter();
+
+  const handleDashboardClick = () => {
+    router.push("/dashboard");
+  };
+
   return (
     <section>
       <Element name="features">
@@ -36,7 +43,9 @@ const Features = () => {
                 <p className="mb-11 body-1 max-md:mb-8 max-md:body-3 ">
                   {text}
                 </p>
-                <Button icon={button.icon}>{String(button.title)}</Button>
+                <Button icon={button.icon} onClick={handleDashboardClick}>
+                  {String(button.title)}
+                </Button>
               </div>
             ))}
             <ul className="relative flex justify-around flex-grow px-[5%] border-2 border-s3 rounded-7xl max-md:hidden">

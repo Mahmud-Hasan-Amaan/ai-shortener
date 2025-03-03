@@ -1,7 +1,7 @@
-import dbConnect from "@/lib/mongodb";
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import dbConnect from "@/lib/mongodb";
 import Link from "@/models/Link";
+import { auth } from "@clerk/nextjs/server";
 
 export async function GET() {
   const session = await auth();

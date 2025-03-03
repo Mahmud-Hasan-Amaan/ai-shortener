@@ -7,6 +7,9 @@ import { GeneratedUrl } from "./GeneratedUrl";
 import { QRCodeDisplay } from "./QRCodeDisplay";
 import { MetadataDisplay } from "./MetadataDisplay";
 import type { Metadata } from "@/types";
+import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface ErrorDetails {
   category: string;
@@ -19,70 +22,65 @@ interface ErrorState {
   details?: ErrorDetails;
 }
 
+interface GeneratedData {
+  shortUrl: string;
+  originalUrl: string;
+  qrCode: string;
+  linkId: string;
+  metadata: any;
+}
+
 export default function ShortenUrl() {
-  const [url, setUrl] = useState("");
+  const [inputUrl, setInputUrl] = useState("");
+  const [generatedData, setGeneratedData] = useState<GeneratedData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
   const [destinationUrl, setDestinationUrl] = useState("");
   const [error, setError] = useState<ErrorState | null>(null);
-  const [generated, setGenerated] = useState("");
   const [metadata, setMetadata] = useState<Metadata | null>(null);
-  const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
 
-  const generate = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
-    setError(null);
-    setQrCode(null);
 
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: inputUrl }),
       });
-
-      const result = await response.json();
-      console.log("Full API Response:", result); // Debug full response
 
       if (!response.ok) {
-        setError({
-          message: result.message,
-          details: {
-            category: result.details.category,
-            confidence: result.details.confidence,
-            reason: result.details.reason,
-          },
-        });
-        toast.error(result.message);
-        return; // Add return to prevent further execution
+        throw new Error("Failed to generate short URL");
       }
 
-      if (result.success) {
-        setGenerated(result.shortUrl);
-        setDestinationUrl(result.originalUrl);
-        setMetadata(result.metadata);
-
-        if (result.qrCode && typeof result.qrCode === "string") {
-          setQrCode(result.qrCode);
-        } else {
-          console.error("Invalid QR code in response:", result.qrCode);
-          toast.error("QR code generation failed");
-        }
-
-        setUrl("");
-        toast.success("URL shortened successfully!");
-      }
-    } catch (error) {
-      console.error("Generate error:", error);
-      setError({
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to generate short URL",
+      const data = await response.json();
+      console.log("Generated URL:", data.shortUrl);
+      setGeneratedData({
+        shortUrl: data.shortUrl,
+        originalUrl: data.originalUrl,
+        qrCode: data.qrCode,
+        linkId: data.linkId,
+        metadata: data.metadata,
       });
-      toast.error("Failed to generate short URL");
+      setDestinationUrl(data.originalUrl);
+      setMetadata({ ...data.metadata, _id: data.linkId });
+
+      if (data.qrCode && typeof data.qrCode === "string") {
+        setQrCode(data.qrCode);
+      } else {
+        console.error("Invalid QR code in response:", data.qrCode);
+        toast.error("QR code generation failed");
+      }
+
+      setInputUrl("");
+      toast.success("URL shortened successfully!");
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Failed to shorten URL");
     } finally {
       setLoading(false);
     }
@@ -100,6 +98,149 @@ export default function ShortenUrl() {
     }
   };
 
+  const handleSaveEdit = async (newShortUrl: string) => {
+    try {
+      const response = await fetch("/api/links/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          oldUrl: generatedData?.shortUrl,
+          newUrl: newShortUrl,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to update URL");
+      }
+
+      setGeneratedData((prev) => ({
+        ...prev!,
+        shortUrl: newShortUrl,
+        originalUrl: destinationUrl,
+      }));
+      toast.success("URL updated successfully!");
+    } catch (error) {
+      console.error("Update error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update URL"
+      );
+      throw error; // Re-throw to handle in the GeneratedUrl component
+    }
+  };
+
+  const handleMetadataUpdate = async (newUrl: string | undefined) => {
+    if (!generatedData?.linkId) {
+      toast.error("No link ID found");
+      return;
+    }
+
+    if (!newUrl || typeof newUrl !== "string") {
+      toast.error("Please enter a valid URL");
+      return;
+    }
+
+    try {
+      // Add protocol if missing
+      const urlToUpdate = newUrl.toString().trim();
+      const urlWithProtocol = urlToUpdate.match(/^https?:\/\//)
+        ? urlToUpdate
+        : `https://${urlToUpdate}`;
+
+      // Validate URL
+      try {
+        new URL(urlWithProtocol);
+      } catch (e) {
+        toast.error("Please enter a valid URL");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/links/${generatedData.linkId}/metadata`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            url: urlWithProtocol,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update URL");
+      }
+
+      setGeneratedData((prev) => ({
+        ...prev!,
+        originalUrl: data.originalUrl,
+        metadata: data.metadata,
+      }));
+
+      toast.success("URL updated successfully");
+    } catch (error) {
+      console.error("Edit error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update URL"
+      );
+    }
+  };
+
+  const handleEdit = async (newUrl: string) => {
+    if (!generatedData?.linkId) {
+      toast.error("No link ID found");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/links/${generatedData.linkId}/metadata`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            url: newUrl,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update URL");
+      }
+
+      setGeneratedData((prev) => ({
+        ...prev!,
+        originalUrl: data.originalUrl,
+        metadata: data.metadata,
+      }));
+
+      toast.success("URL updated successfully");
+    } catch (error) {
+      console.error("Edit error:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update URL"
+      );
+    }
+  };
+
+  console.log({
+    generatedData,
+    destinationUrl,
+    metadata,
+  });
+
   return (
     <div className="relative mx-auto max-w-3xl">
       <div className="relative overflow-hidden rounded-[2.5rem] border border-white/20 bg-white/5 p-8 backdrop-blur-xl">
@@ -110,12 +251,18 @@ export default function ShortenUrl() {
             Generate Smart Short URLs
           </h3>
 
-          <ShortenUrlInput
-            url={url}
-            loading={loading}
-            onUrlChange={setUrl}
-            onGenerate={generate}
-          />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              type="url"
+              placeholder="Enter your URL"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              required
+            />
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Generating..." : "Generate Short URL"}
+            </Button>
+          </form>
 
           <AnimatePresence>
             {error && (
@@ -142,25 +289,35 @@ export default function ShortenUrl() {
           </AnimatePresence>
 
           <AnimatePresence>
-            {(generated || metadata) && (
+            {generatedData && metadata && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 className="mt-8 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-6"
               >
-                {generated && (
+                {generatedData && (
                   <>
                     <GeneratedUrl
-                      shortUrl={generated}
-                      destinationUrl={destinationUrl}
-                      copying={copying}
-                      onCopy={copyToClipboard}
+                      shortUrl={generatedData.shortUrl}
+                      originalUrl={generatedData.originalUrl}
+                      qrCode={generatedData.qrCode}
+                      linkId={generatedData.linkId}
+                      onEdit={handleEdit}
                     />
-                    {qrCode && <QRCodeDisplay qrCode={qrCode} />}
+                    {generatedData.qrCode && (
+                      <QRCodeDisplay qrCode={generatedData.qrCode} />
+                    )}
                   </>
                 )}
-                {metadata && <MetadataDisplay metadata={metadata} />}
+                {metadata && (
+                  <MetadataDisplay
+                    metadata={metadata}
+                    shortUrl={generatedData.shortUrl}
+                    linkId={generatedData.linkId}
+                    onMetadataUpdate={handleMetadataUpdate}
+                  />
+                )}
               </motion.div>
             )}
           </AnimatePresence>

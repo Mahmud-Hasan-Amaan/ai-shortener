@@ -16,6 +16,8 @@ interface AIInput {
     title: string;
     description: string;
   };
+  attempt?: number;
+  task?: string;
 }
 
 interface AIOutput {
@@ -64,43 +66,158 @@ export async function generateAIContent(
   aiInput: AIInput & { attempt?: number }
 ): Promise<AIOutput | null> {
   try {
-    const attemptPrompt = aiInput.attempt
-      ? `This is attempt ${aiInput.attempt}. Please generate a different alias than previous attempts.`
-      : "";
+    const messages = [
+      {
+        role: "system",
+        content: `You are an advanced AI system specialized in URL content analysis and metadata enhancement. Your core purpose is to deeply understand any web content and generate rich, meaningful metadata that captures its true essence.
+
+Your analysis should:
+- Extract and enhance the core subject matter, not just surface-level details
+- Generate precise, meaningful titles that reflect the actual content
+- Create detailed descriptions that capture the unique value proposition
+- Identify the true purpose and target audience
+- Understand technical depth and prerequisites when relevant
+- Recognize practical applications and key takeaways
+- Generate SEO-optimized keywords and classifications
+- Determine appropriate content categorization and safety ratings
+
+You have the capability to analyze any type of web content including articles, documentation, videos, podcasts, products, or applications. Always focus on the actual content's value and purpose, never just its format or platform.
+
+Generate your response in the required JSON structure, ensuring each field provides meaningful, content-specific information that adds value for users.`,
+      },
+      {
+        role: "user",
+        content: `Analyze this URL's actual content:
+          URL: ${aiInput.url}
+          Title: ${aiInput.metadata.title}
+          Description: ${aiInput.metadata.description}
+          Content: ${aiInput.metadata.content || ""}
+
+          For any website type:
+          1. What specific content is shown?
+          2. What can users do on this page?
+          3. What information or value is provided?
+          4. Who is this content actually for?
+          5. What makes this page unique or useful?
+
+          Required JSON structure:
+          {
+            "alias": "brief-id",
+            "shortTitle": "what-this-page-is",
+            "enhancedTitle": "specific-content-purpose",
+            "enhancedDescription": "what-users-will-actually-find-here",
+            "suggestedKeywords": [
+              "specific-content-elements",
+              "actual-topics-covered",
+              "real-features-shown"
+            ],
+            "category": "specific-content-type",
+            "safetyRating": "content-safety-level",
+            "enhancedMetadata": {
+              "subject": "main-content-area",
+              "topic": "specific-focus",
+              "classification": "actual-content-format",
+              "language": "content-language",
+              "author": "content-creator",
+              "copyright": "rights-info",
+              "ogType": "content-type",
+              "ogSiteName": "platform-name"
+            },
+            "aiAnalysis": {
+              "tone": "content-style",
+              "contentType": "specific-format",
+              "keyTakeaways": [
+                "main-content-element",
+                "key-feature-available",
+                "primary-user-benefit"
+              ],
+              "technicalDepth": "content-complexity",
+              "prerequisites": [
+                "required-to-use",
+                "needed-to-understand"
+              ],
+              "practicalApplications": [
+                "actual-use-case",
+                "real-world-application"
+              ]
+            },
+            "targetAudience": "specific-user-type"
+          }
+
+          Examples for different content types:
+
+          E-commerce Product:
+          {
+            "shortTitle": "Nike Air Max 2024",
+            "enhancedTitle": "Nike Air Max 2024 Running Shoes - Performance Details",
+            "enhancedDescription": "Latest Nike Air Max running shoes with responsive cushioning, mesh upper, and custom fit technology. Available in 6 colors, sizes 6-14.",
+            "aiAnalysis": {
+              "contentType": "Product Page",
+              "keyTakeaways": [
+                "New running shoe model",
+                "Advanced cushioning system",
+                "Multiple color options"
+              ]
+            }
+          }
+
+          News Article:
+          {
+            "shortTitle": "Tech Startup Funding",
+            "enhancedTitle": "AI Startup Raises $50M Series B for Language Models",
+            "enhancedDescription": "Breaking news: AI company secures major funding to develop advanced language models. Details on investors, technology, and market impact.",
+            "aiAnalysis": {
+              "contentType": "News Article",
+              "keyTakeaways": [
+                "Funding announcement",
+                "Investment details",
+                "Company roadmap"
+              ]
+            }
+          }
+
+          Dashboard:
+          {
+            "shortTitle": "Sales Analytics",
+            "enhancedTitle": "Real-time Sales Performance Dashboard - Q1 2024",
+            "enhancedDescription": "Live dashboard showing current sales metrics, revenue trends, and regional performance data with interactive charts and filters.",
+            "aiAnalysis": {
+              "contentType": "Analytics Dashboard",
+              "keyTakeaways": [
+                "Current sales data",
+                "Performance metrics",
+                "Regional breakdown"
+              ]
+            }
+          }"`,
+      },
+    ];
+
+    const shortcodePrompt = `
+Generate a meaningful, brief alias for this URL that reflects its content.
+The alias should be:
+1. 4-6 characters long
+2. Memorable and relevant to content
+3. Only use letters and numbers
+4. Lowercase preferred
+
+Examples:
+- YouTube video about cats -> "cats2"
+- Tech blog about AI -> "ai4dev"
+- News article about space -> "space1"
+- Product page for shoes -> "shoe5"
+`;
+
+    if (aiInput.task === "shortcode") {
+      messages.push({
+        role: "user",
+        content: shortcodePrompt + `\nURL: ${aiInput.url}\n`,
+      });
+    }
 
     const completion = await groq.chat.completions.create({
       model: "mixtral-8x7b-32768",
-      messages: [
-        {
-          role: "system",
-          content: `You are a JSON-only response AI. Always format your response as valid JSON, no matter what. Never include explanatory text outside the JSON structure.`,
-        },
-        {
-          role: "user",
-          content: `Generate metadata for this URL in strict JSON format:
-            URL: ${aiInput.url}
-            Original Title: ${aiInput.metadata.title}
-            Original Description: ${aiInput.metadata.description}
-            ${attemptPrompt}
-
-            Required JSON structure:
-            {
-              "alias": "short-name",
-              "shortTitle": "concise-title",
-              "enhancedTitle": "full-title",
-              "enhancedDescription": "description",
-              "suggestedKeywords": ["keyword1", "keyword2"]
-            }
-
-            Rules:
-            - Response must be valid JSON only
-            - No text outside JSON structure
-            - No explanations or comments
-            - alias: max 20 chars, must be unique and different from previous attempts
-            - shortTitle: 30-50 chars
-            - Never use generic values like "Generated Title" or "Error"`,
-        },
-      ],
+      messages: messages,
       temperature: 0.7,
       max_tokens: 500,
       response_format: { type: "json_object" },

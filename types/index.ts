@@ -87,3 +87,10 @@ export interface ErrorState {
     confidence: number;
   };
 }
+
+export type GenerateResponse = {
+  success: boolean;
+  shortUrl: string;
+  metadata: Metadata;
+  qrCode: string;
+};

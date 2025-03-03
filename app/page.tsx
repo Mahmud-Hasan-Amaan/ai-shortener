@@ -1,4 +1,3 @@
-import Shorten from "./shorten/page";
 import Header from "./sections/Header";
 import Hero from "./sections/Hero";
 import Features from "./sections/Features";
@@ -10,8 +9,7 @@ import Footer from "./sections/Footer";
 
 export default function Home() {
   return (
-    <main>
-      <Shorten />
+    <div className="w-full overflow-x-hidden">
       <Header />
       <Hero />
       <Features />
@@ -20,6 +18,6 @@ export default function Home() {
       <Testimonials />
       <Download />
       <Footer />
-    </main>
+    </div>
   );
 }

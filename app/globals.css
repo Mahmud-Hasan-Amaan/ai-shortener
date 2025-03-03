@@ -5,46 +5,25 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    @apply bg-s1;
-  }
-
-  body {
-    @apply font-poppins text-[16px] tracking-[-0.03em] text-p5;
-  }
-
-  a {
-    @apply no-underline;
-  }
-
-  img {
-    @apply block max-w-full;
-  }
-
-  button {
-    @apply bg-none tracking-[-0.03em];
-  }
-
-  input {
-    @apply tracking-[-0.03em];
-  }
   :root {
-    /* Your custom colors */
-    --p1: #2ef2ff;
-    --p2: #3c52d9;
-    --p3: #c8ea80;
-    --p4: #eaedff;
-    --p5: #c4cbf5;
-    --s1: #080d27;
-    --s2: #0c1838;
-    --s3: #334679;
-    --s4: #1959ad;
-    --s5: #263466;
-    --black-100: #05091d;
-
-    /* shadcn light theme */
+    /* Light theme */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+    
+    /* Your custom light colors */
+    --p1: 187 97% 59%;  /* #2ef2ff */
+    --p2: 231 67% 54%;  /* #3c52d9 */
+    --p3: 72 71% 71%;   /* #c8ea80 */
+    --p4: 234 100% 95%; /* #eaedff */
+    --p5: 233 67% 86%;  /* #c4cbf5 */
+    --s1: 0 0% 100%;    /* #ffffff */
+    --s2: 220 75% 98%;  /* #f8f9fc */
+    --s3: 222 31% 34%;  /* #334679 */
+    --s4: 213 73% 39%;  /* #1959ad */
+    --s5: 226 48% 27%;  /* #263466 */
+    --black-100: 228 69% 7%; /* #05091d */
+
+    /* Other shadcn light theme variables */
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
@@ -70,47 +49,72 @@
     --radius: 0.5rem;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      /* Your custom dark colors if needed */
-      --p1: #2ef2ff;
-      --p2: #3c52d9;
-      --p3: #c8ea80;
-      --p4: #eaedff;
-      --p5: #c4cbf5;
-      --s1: #080d27;
-      --s2: #0c1838;
-      --s3: #334679;
-      --s4: #1959ad;
-      --s5: #263466;
-      --black-100: #05091d;
+  .dark {
+    /* Dark theme */
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    
+    /* Your custom dark colors */
+    --p1: 187 97% 59%;  /* #2ef2ff */
+    --p2: 231 67% 54%;  /* #3c52d9 */
+    --p3: 72 71% 71%;   /* #c8ea80 */
+    --p4: 234 100% 95%; /* #eaedff */
+    --p5: 233 67% 86%;  /* #c4cbf5 */
+    --s1: 228 54% 9%;   /* #080d27 */
+    --s2: 220 64% 13%;  /* #0c1838 */
+    --s3: 222 31% 34%;  /* #334679 */
+    --s4: 213 73% 39%;  /* #1959ad */
+    --s5: 226 48% 27%;  /* #263466 */
+    --black-100: 228 69% 7%; /* #05091d */
 
-      /* shadcn dark theme */
-      --background: 222.2 84% 4.9%;
-      --foreground: 210 40% 98%;
-      --card: 222.2 84% 4.9%;
-      --card-foreground: 210 40% 98%;
-      --popover: 222.2 84% 4.9%;
-      --popover-foreground: 210 40% 98%;
-      --primary: 210 40% 98%;
-      --primary-foreground: 222.2 47.4% 11.2%;
-      --secondary: 217.2 32.6% 17.5%;
-      --secondary-foreground: 210 40% 98%;
-      --muted: 217.2 32.6% 17.5%;
-      --muted-foreground: 215 20.2% 65.1%;
-      --accent: 217.2 32.6% 17.5%;
-      --accent-foreground: 210 40% 98%;
-      --destructive: 0 62.8% 30.6%;
-      --destructive-foreground: 210 40% 98%;
-      --border: 217.2 32.6% 17.5%;
-      --input: 217.2 32.6% 17.5%;
-      --ring: 212.7 26.8% 83.9%;
-      --chart-1: 220 70% 50%;
-      --chart-2: 160 60% 45%;
-      --chart-3: 30 80% 55%;
-      --chart-4: 280 65% 60%;
-      --chart-5: 340 75% 55%;
-    }
+    /* Other shadcn dark theme variables */
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  /* Base styles */
+  html {
+    @apply bg-s1 transition-colors duration-300;
+  }
+
+  body {
+    @apply font-poppins text-[16px] tracking-[-0.03em] text-foreground bg-background transition-colors duration-300;
+  }
+
+  a {
+    @apply no-underline;
+  }
+
+  img {
+    @apply block max-w-full;
+  }
+
+  button {
+    @apply bg-none tracking-[-0.03em];
+  }
+
+  input {
+    @apply tracking-[-0.03em];
   }
 }
 
@@ -401,6 +405,47 @@
 @layer base {
   * {
     @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Add this new class */
+.section-container {
+  @apply w-full max-w-full overflow-x-hidden;
+}
+
+@layer components {
+  .nav-active {
+    @apply text-p1 !important;
+  }
+
+  .dot {
+    @apply size-1 rounded-full mx-6 max-lg:hidden;
+    background-color: rgba(var(--foreground) / 0.2);
+  }
+
+  .dark .dot {
+    background-color: rgba(var(--p4) / 0.2);
+  }
+
+  .sidebar-before::before {
+    content: "";
+    @apply absolute inset-0 backdrop-blur-[8px];
+    background-color: rgba(var(--background) / 0.8);
+  }
+
+  .dark .sidebar-before::before {
+    background-color: rgba(var(--s2) / 0.8);
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;

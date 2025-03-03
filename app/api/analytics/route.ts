@@ -61,35 +61,58 @@ export async function GET(req: Request) {
 
     await dbConnect();
 
-    // Get all links for this user
     const userLinks = await Link.find({ userId });
 
-    // Get all clicks with their timestamps
+    // Get all clicks with their data
     const allClicks = userLinks.flatMap((link) =>
       (link.clicks || []).map((click) => ({
         timestamp: new Date(click.timestamp).toISOString(),
         clicks: 1,
         visitorId: click.visitorId,
-        device: click.device || "unknown", // Make sure we include device info
+        device: click.device || "unknown",
+        country: click.country || "Unknown", // Add country data
       }))
     );
 
     // Process device data
-    const deviceCounts: { [key: string]: number } = {};
+    const deviceCounts = {};
+    const locationCounts = {};
+
     allClicks.forEach((click) => {
+      // Device counting
       const device = click.device || "unknown";
       deviceCounts[device] = (deviceCounts[device] || 0) + 1;
+
+      // Location counting
+      const country = click.country || "Unknown";
+      locationCounts[country] = (locationCounts[country] || 0) + 1;
     });
 
-    // Format device data for the frontend
+    // Calculate total visits for percentages
+    const totalVisits = Object.values(locationCounts).reduce(
+      (sum: any, count: any) => sum + count,
+      0
+    );
+
+    // Format location data
+    const locationData = Object.entries(locationCounts).map(
+      ([country, count]) => ({
+        country,
+        count,
+        percentage: totalVisits > 0 ? (count as number) / totalVisits : 0,
+      })
+    );
+
+    // Format device data
     const deviceData = Object.entries(deviceCounts).map(([name, value]) => ({
-      name: name.charAt(0).toUpperCase() + name.slice(1), // Capitalize first letter
+      name: name.charAt(0).toUpperCase() + name.slice(1),
       value,
     }));
 
     return NextResponse.json({
       data: allClicks,
       deviceData,
+      locationData,
       totalClicks: allClicks.length,
     });
   } catch (error) {

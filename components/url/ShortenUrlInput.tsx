@@ -1,6 +1,7 @@
 "use client";
 import { LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
+import { useState } from "react";
 
 interface ShortenUrlInputProps {
   url: string;
@@ -15,8 +16,30 @@ export function ShortenUrlInput({
   onUrlChange,
   onGenerate,
 }: ShortenUrlInputProps) {
+  const [error, setError] = useState<string | null>(null);
+
+  const validateUrl = (input: string) => {
+    if (input === "") {
+      setError(null);
+      return;
+    }
+
+    if (!input.startsWith("http://") && !input.startsWith("https://")) {
+      setError("Please enter a valid URL starting with http:// or https://");
+      return false;
+    }
+
+    setError(null);
+    return true;
+  };
+
+  const handleUrlChange = (value: string) => {
+    onUrlChange(value);
+    validateUrl(value);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && url && !loading) {
+    if (e.key === "Enter" && url && !loading && !error) {
       e.preventDefault();
       onGenerate();
     }
@@ -29,16 +52,25 @@ export function ShortenUrlInput({
         <input
           type="url"
           value={url}
-          className="w-full pl-12 pr-6 py-4 rounded-2xl border-2 border-white/10 bg-black/5 backdrop-blur-sm text-white placeholder:text-gray-400 focus:outline-none focus:border-purple-400/50 transition-all"
+          className={`w-full pl-12 pr-6 py-4 rounded-2xl border-2 ${
+            error ? "border-red-500/50" : "border-white/10"
+          } bg-black/5 backdrop-blur-sm text-white placeholder:text-gray-400 focus:outline-none ${
+            error ? "focus:border-red-500/50" : "focus:border-purple-400/50"
+          } transition-all`}
           placeholder="Enter your URL"
-          onChange={(e) => onUrlChange(e.target.value)}
+          onChange={(e) => handleUrlChange(e.target.value)}
           onKeyDown={handleKeyPress}
         />
+        {error && (
+          <p className="absolute -bottom-6 left-0 text-sm text-red-400">
+            {error}
+          </p>
+        )}
       </div>
 
       <motion.button
         onClick={onGenerate}
-        disabled={loading || !url}
+        disabled={loading || !url || error !== null}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         className="relative overflow-hidden rounded-2xl py-4 px-6 bg-gradient-to-r from-purple-500 to-cyan-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed group"

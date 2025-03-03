@@ -1,11 +1,17 @@
 "use client";
 
 import React from "react";
-import { Element, Link as LinkScroll } from "react-scroll";
+import { Element } from "react-scroll";
 import Button from "@/components/ui/CustomButton";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 const Hero = () => {
+  const router = useRouter();
+
+  const handleDashboardClick = () => {
+    router.push("/dashboard");
+  };
   return (
     <section className="relative pt-60 pb-40 max-lg:pt-52 max-lg:pb-36 max-md:pt-36 max-md:pb-32">
       <Element name="hero">
@@ -22,15 +28,10 @@ const Hero = () => {
               create personalized, memorable links while providing powerful
               analytics and insights.
             </p>
-            <LinkScroll
-              to="features"
-              offset={-100}
-              spy
-              smooth
-              className="btn btn-primary"
-            >
-              <Button icon="/images/zap.svg">Try It Now</Button>
-            </LinkScroll>
+
+            <Button icon="/images/zap.svg" onClick={handleDashboardClick}>
+              Try It Now
+            </Button>
           </div>
           <div className="absolute -top-32 left-[calc(50%-340px)] w-[1230px] pointer-events-none hero-img_res">
             <Image

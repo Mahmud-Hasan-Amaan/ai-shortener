@@ -4,16 +4,28 @@
 import mongoose from "mongoose";
 import { registerCleanup } from "@/lib/utils/cleanup";
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI!;
 
 if (!MONGODB_URI) {
-  throw new Error("Please define the MONGODB_URI environment variable");
+  throw new Error(
+    "Please define the MONGODB_URI environment variable inside .env.local"
+  );
 }
 
-let cached = global.mongoose;
+interface CachedConnection {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var mongooseCache: CachedConnection;
+}
+
+let cached = global.mongooseCache || { conn: null, promise: null };
 
 if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
+  cached = { conn: null, promise: null };
 }
 
 async function dbConnect() {
