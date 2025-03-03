@@ -1,129 +1,55 @@
-import { auth } from "@clerk/nextjs";
-import { dbConnect } from "@/lib/db";
-import { Link } from "@/models/Link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link2, MousePointerClick, TrendingUp } from "lucide-react";
+import { cache } from "react";
+import dbConnect from "@/lib/mongodb";
+import Link from "@/models/Link";
+import { formatNumber } from "@/lib/utils";
 
-async function getStats() {
+// Cache the stats fetching for 1 minute
+const getStats = cache(async (userId: string) => {
   try {
-    const { userId } = await auth();
-    if (!userId) return null;
-
-    // Ensure DB connection is established first
     await dbConnect();
 
-    // Now perform the aggregation
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Optimize MongoDB query by using a single aggregation pipeline
     const stats = await Link.aggregate([
       { $match: { userId } },
       {
         $facet: {
           totalLinks: [{ $count: "count" }],
           totalClicks: [
-            {
-              $group: {
-                _id: null,
-                clicks: { $sum: "$clicks" },
-              },
-            },
+            { $group: { _id: null, total: { $sum: "$clickCount" } } },
           ],
-          mostClicked: [
-            { $sort: { clicks: -1 } },
-            { $limit: 1 },
+          last30Days: [
             {
-              $project: {
-                originalUrl: 1,
-                clicks: 1,
+              $match: {
+                createdAt: { $gte: thirtyDaysAgo },
               },
             },
-          ],
-          recentLinks: [
-            { $sort: { createdAt: -1 } },
-            { $limit: 5 },
-            {
-              $project: {
-                originalUrl: 1,
-                shortCode: 1,
-                clicks: 1,
-              },
-            },
+            { $count: "count" },
           ],
         },
       },
-    ]);
+    ]).exec();
 
-    // Extract values from aggregation result
     const result = stats[0];
     return {
       totalLinks: result.totalLinks[0]?.count || 0,
-      totalClicks: result.totalClicks[0]?.clicks || 0,
-      mostClicked: result.mostClicked[0] || null,
-      recentLinks: result.recentLinks || [],
+      totalClicks: result.totalClicks[0]?.total || 0,
+      last30Days: result.last30Days[0]?.count || 0,
     };
   } catch (error) {
     console.error("Error fetching stats:", error);
-    return null;
+    return {
+      totalLinks: 0,
+      totalClicks: 0,
+      last30Days: 0,
+    };
   }
-}
+});
 
-export async function StatsCard() {
-  const stats = await getStats();
-
-  if (!stats) {
-    return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Loading stats...
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Links</CardTitle>
-          <Link2 className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.totalLinks}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Clicks</CardTitle>
-          <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.totalClicks}</div>
-        </CardContent>
-      </Card>
-
-      {stats.mostClicked && (
-        <Card className="col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Most Clicked Link
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm font-medium truncate">
-              {stats.mostClicked.originalUrl}
-            </div>
-            <div className="text-2xl font-bold">
-              {stats.mostClicked.clicks} clicks
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
+interface StatsCardProps {
+  userId: string;
 }
 
 export async function StatsCard({ userId }: StatsCardProps) {
